@@ -72,5 +72,5 @@ def predict():
 
 if __name__ == '__main__':
     # Running in debug mode allows for automatic reloads
-    model = tf.keras.models.load_model('m2.keras')
+    #model = tf.keras.models.load_model('m2.keras')
     app.run(debug=True)
