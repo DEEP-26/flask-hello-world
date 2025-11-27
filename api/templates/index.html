@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fruit Ripeness Predictor</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+        }
+        .prediction-card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        /* Make video fill container but maintain aspect ratio */
+        #camera-video {
+            width: 100%;
+            height: auto;
+            max-height: 400px; /* Limit height for better viewing */
+            object-fit: cover;
+            border-radius: 0.5rem;
+        }
+        /* Hide canvas but keep it available for drawing */
+        #camera-canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
+
+    <div id="app" class="w-full max-w-2xl bg-white p-6 sm:p-8 rounded-xl prediction-card border border-gray-100">
+
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+            Fruit Ripeness Analysis
+        </h1>
+        <p class="text-center text-gray-500 mb-6">
+            Select your input method and upload or capture an image for prediction.
+        </p>
+
+        <!-- Input Mode Selection -->
+        <div class="mb-6 flex space-x-4 justify-center">
+            <button id="mode-file" onclick="switchInputMode('file')" class="px-4 py-2 rounded-lg font-semibold bg-indigo-600 text-white transition duration-200 shadow-md">
+                Upload File
+            </button>
+            <button id="mode-camera" onclick="switchInputMode('camera')" class="px-4 py-2 rounded-lg font-semibold bg-gray-200 text-gray-700 transition duration-200 hover:bg-gray-300 shadow-md">
+                Take Photo
+            </button>
+        </div>
+
+        <!-- Content Containers -->
+        <div id="file-input-container" class="mb-8">
+            <!-- Image Upload and Preview Area (Existing) -->
+            <div class="p-4 border-2 border-dashed border-indigo-300 rounded-lg bg-indigo-50">
+                <label for="image-upload" class="cursor-pointer block text-center py-4 text-indigo-600 font-semibold">
+                    Click here to upload a fruit image
+                </label>
+                <input type="file" id="image-upload" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+
+                <div id="image-preview-container" class="mt-4 hidden justify-center items-center">
+                    <img id="image-preview" class="max-h-64 max-w-full rounded-lg shadow-md object-contain" alt="Image Preview">
+                </div>
+            </div>
+        </div>
+
+        <div id="camera-input-container" class="hidden mb-8">
+            <div class="p-4 border-2 border-dashed border-red-300 rounded-lg bg-red-50 text-center">
+                <p class="text-red-700 font-medium mb-4">Point your camera at the fruit and capture the photo.</p>
+                <div>
+                    <video id="camera-video" autoplay playsinline></video>
+                    <button id="capture-button" onclick="capturePhoto()" 
+                        class="w-full mt-4 py-2 px-4 rounded-lg text-white font-bold bg-red-600 hover:bg-red-700 disabled:opacity-50 transition duration-300"
+                        disabled>
+                        Capture Photo
+                    </button>
+                </div>
+                <canvas id="camera-canvas"></canvas>
+                <div id="camera-preview-container" class="mt-4 hidden justify-center items-center">
+                    <img id="camera-preview" class="max-h-64 max-w-full rounded-lg shadow-md object-contain" alt="Image Preview">
+                </div>
+                <p id="camera-error" class="text-red-500 text-sm mt-2 hidden">Camera access denied or device not found.</p>
+            </div>
+        </div>
+
+        <!-- Prediction and Reset Buttons -->
+        <div class="flex space-x-4 mb-6">
+            <button id="predict-button" onclick="handlePrediction()" 
+                    class="flex-1 py-3 px-4 rounded-lg text-white font-bold transition duration-300 disabled:opacity-50
+                        bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50"
+                    disabled>
+                <span id="button-text">Get Ripeness Prediction</span>
+                <svg id="loading-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+             <button id="reset-button" onclick="resetApp()" 
+                    class="w-1/4 py-3 px-4 rounded-lg text-gray-700 font-bold transition duration-300 bg-gray-200 hover:bg-gray-300 focus:outline-none focus:ring-4 focus:ring-gray-400 focus:ring-opacity-50 hidden">
+                Reset
+            </button>
+        </div>
+
+
+        <!-- Prediction Result Area (Existing) -->
+        <div id="result-area" class="mt-4 p-5 rounded-lg border border-gray-200 bg-white hidden">
+            <h2 class="text-xl font-semibold text-gray-800 mb-3 flex items-center">
+                <svg class="w-6 h-6 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.046 11.955 11.955 0 00-1.748 1.157 11.955 11.955 0 00-1.748 1.157 11.955 11.955 0 00-.776 1.344 11.955 11.955 0 00-.776 1.344 11.955 11.955 0 000 2.512 11.955 11.955 0 00.776 1.344 11.955 11.955 0 001.748 1.157 11.955 11.955 0 018.618 3.046 11.955 11.955 0 0112 21.056c.767-.282 1.488-.632 2.146-1.049a11.955 11.955 0 001.748-1.157 11.955 11.955 0 00.776-1.344 11.955 11.955 0 00.776-1.344 11.955 11.955 0 000-2.512 11.955 11.955 0 00-.776-1.344 11.955 11.955 0 00-1.748-1.157 11.955 11.955 0 00-8.618-3.046z"></path></svg>
+                Prediction Results
+            </h2>
+            <p class="text-gray-600">The model predicts the following for your image:</p>
+            
+            <div class="mt-4 space-y-3">
+                <div class="flex justify-between items-center p-3 rounded-md bg-green-50">
+                    <span class="font-medium text-gray-700">Identified Fruit:</span>
+                    <span id="result-fruit" class="font-bold text-lg text-green-700"></span>
+                </div>
+                <div class="flex justify-between items-center p-3 rounded-md bg-green-100">
+                    <span class="font-medium text-gray-700">Ripeness Status:</span>
+                    <span id="result-ripeness" class="font-bold text-xl text-green-900"></span>
+                </div>
+                <div class="flex justify-between items-center p-3 rounded-md bg-green-50">
+                    <span class="font-medium text-gray-700">Confidence Score:</span>
+                    <span id="result-confidence" class="font-bold text-lg text-green-700"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message/Error Box (Existing) -->
+        <div id="message-box" class="hidden mt-4 p-4 rounded-lg text-sm bg-red-100 text-red-700 font-medium">
+            <!-- Error messages will appear here -->
+        </div>
+
+    </div>
+
+    <script>
+        // Global variables
+        let base64Image = null;
+        let mediaStream = null;
+
+        // Element references
+        const predictButton = document.getElementById('predict-button');
+        const buttonText = document.getElementById('button-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const resultArea = document.getElementById('result-area');
+        const messageBox = document.getElementById('message-box');
+        const resetButton = document.getElementById('reset-button');
+        
+        const fileInputContainer = document.getElementById('file-input-container');
+        const cameraInputContainer = document.getElementById('camera-input-container');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const cameraPreviewContainer = document.getElementById('camera-preview-container');
+        const cameraPreview = document.getElementById('camera-preview');
+        const cameraVideo = document.getElementById('camera-video');
+        const cameraCanvas = document.getElementById('camera-canvas');
+        const captureButton = document.getElementById('capture-button');
+        const cameraError = document.getElementById('camera-error');
+        const imageUploadInput = document.getElementById('image-upload');
+        
+        const modeFileButton = document.getElementById('mode-file');
+        const modeCameraButton = document.getElementById('mode-camera');
+
+
+        /**
+         * Clears all temporary state and results.
+         */
+        function resetState() {
+            base64Image = null;
+            predictButton.disabled = true;
+            resultArea.classList.add('hidden');
+            messageBox.classList.add('hidden');
+            imagePreviewContainer.classList.add('hidden');
+            imagePreview.src = '';
+            cameraPreviewContainer.classList.add('hidden');
+            cameraPreview.src = '';
+            resetButton.classList.add('hidden');
+            
+            // Clear file input value to allow re-uploading the same file
+            imageUploadInput.value = ''; 
+        }
+
+        /**
+         * Resets the entire application state and switches back to the initial mode.
+         */
+        function resetApp() {
+            resetState();
+            switchInputMode('file'); // Default back to file upload mode
+        }
+
+        /**
+         * Switches the input UI between file upload and camera mode.
+         * @param {string} mode 'file' or 'camera'.
+         */
+        function switchInputMode(mode) {
+            resetState();
+            stopCamera(); 
+
+            if (mode === 'file') {
+                // Activate File Mode UI
+                fileInputContainer.classList.remove('hidden');
+                cameraInputContainer.classList.add('hidden');
+                
+                modeFileButton.classList.replace('bg-gray-200', 'bg-indigo-600');
+                modeFileButton.classList.replace('text-gray-700', 'text-white');
+                modeCameraButton.classList.replace('bg-indigo-600', 'bg-gray-200');
+                modeCameraButton.classList.replace('text-white', 'text-gray-700');
+                
+            } else if (mode === 'camera') {
+                // Activate Camera Mode UI
+                fileInputContainer.classList.add('hidden');
+                cameraInputContainer.classList.remove('hidden');
+
+                modeCameraButton.classList.replace('bg-gray-200', 'bg-indigo-600');
+                modeCameraButton.classList.replace('text-gray-700', 'text-white');
+                modeFileButton.classList.replace('bg-indigo-600', 'bg-gray-200');
+                modeFileButton.classList.replace('text-white', 'text-gray-700');
+                
+                startCamera();
+            }
+        }
+        
+        /**
+         * Initializes and starts the camera feed.
+         */
+        async function startCamera() {
+            cameraError.classList.add('hidden');
+            captureButton.disabled = true;
+
+            // 1. Check if media devices API is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showMessage("Camera API not supported in this browser/environment.", 'error');
+                return;
+            }
+
+            try {
+                // Request access to video stream (prefers back camera on mobile)
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
+                });
+
+                cameraVideo.srcObject = mediaStream;
+                cameraVideo.play();
+
+                cameraVideo.onloadedmetadata = () => {
+                    // Enable capture button once video is ready
+                    captureButton.disabled = false;
+                    showMessage("Camera feed active. Click 'Capture Photo' when ready.", 'success');
+                };
+
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                cameraVideo.srcObject = null;
+                cameraError.classList.remove('hidden');
+                
+                let errorMessage = "Could not access camera. Ensure your browser allows camera access (especially in iframes/Canvas environments).";
+                
+                if (err.name === 'NotAllowedError') {
+                    errorMessage = "Camera access denied by the user or security policy. Please check browser permissions.";
+                } else if (err.name === 'NotFoundError') {
+                    errorMessage = "No camera found on this device.";
+                } else if (err.name === 'NotReadableError') {
+                    errorMessage = "Camera device is in use by another application.";
+                }
+                showMessage(errorMessage, 'error');
+            }
+        }
+
+        /**
+         * Stops the video stream tracks.
+         */
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => {
+                    track.stop(); // Stop all tracks (video, audio)
+                });
+                mediaStream = null;
+                cameraVideo.srcObject = null;
+            }
+        }
+
+        /**
+         * Captures a photo from the video feed, displays it, and generates base64.
+         */
+        function capturePhoto() {
+            if (!mediaStream) {
+                showMessage("Camera not active. Please start the camera first.", 'error');
+                return;
+            }
+            
+            // Set canvas dimensions to match video feed
+            cameraCanvas.width = cameraVideo.videoWidth;
+            cameraCanvas.height = cameraVideo.videoHeight;
+            
+            const context = cameraCanvas.getContext('2d');
+            
+            // Draw the current video frame onto the canvas
+            context.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+            // Get the data URL (base64 string) from the canvas
+            const dataURL = cameraCanvas.toDataURL('image/jpeg', 0.9);
+            
+            // Display the captured image in the preview container
+            cameraPreview.src = dataURL;
+            cameraPreviewContainer.classList.remove('hidden');
+            
+            // Extract only the base64 string part (remove the data URI header)
+            base64Image = dataURL.split(',')[1];
+            
+            // Stop the camera stream after capturing
+            stopCamera(); 
+            
+            // Enable prediction
+            predictButton.disabled = false;
+            captureButton.disabled = true;
+
+            // Optional: Give visual feedback on successful capture
+            showMessage("Photo captured successfully! Click 'Get Ripeness Prediction'.", 'success');
+        }
+
+        /**
+         * Handles file upload, converts to base64, and displays the preview.
+         * @param {Event} event The change event from the file input.
+         */
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            resetState();
+
+            if (!file) return;
+
+            const reader = new FileReader();
+
+            reader.onloadstart = () => {
+                predictButton.disabled = true;
+            };
+
+            reader.onload = function(e) {
+                const dataURL = e.target.result;
+                
+                // --- DEBUGGING LOG ADDED HERE ---
+                console.log("File loaded. Data URL length:", dataURL ? dataURL.length : 0);
+                // --- DEBUGGING LOG ADDED HERE ---
+                
+                imagePreview.src = dataURL;
+                imagePreviewContainer.classList.remove('hidden');
+
+                // Extract only the base64 string part (remove the data URI header)
+                base64Image = dataURL.split(',')[1];
+                
+                predictButton.disabled = false;
+            };
+
+            reader.onerror = (error) => {
+                showMessage(`Error reading file: ${error}`, 'error');
+                predictButton.disabled = true;
+            };
+
+            reader.readAsDataURL(file);
+        }
+        
+        /**
+         * Displays a message or error in the dedicated box.
+         * (Existing Function)
+         */
+        function showMessage(message, type = 'error') {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden');
+            if (type === 'error') {
+                messageBox.className = 'mt-4 p-4 rounded-lg text-sm bg-red-100 text-red-700 font-medium';
+            } else if (type === 'success') {
+                messageBox.className = 'mt-4 p-4 rounded-lg text-sm bg-blue-100 text-blue-700 font-medium';
+            }
+        }
+
+        /**
+         * Handles the click event for the prediction button.
+         * (Existing Function, relies on base64Image being set)
+         */
+        async function handlePrediction() {
+            if (!base64Image) {
+                showMessage("Please upload an image or capture a photo first.", 'error');
+                return;
+            }
+            
+            // Ensure camera is stopped if prediction is run quickly after capture
+            stopCamera();
+
+            // UI State: Loading
+            predictButton.disabled = true;
+            buttonText.textContent = "Analyzing Image...";
+            loadingSpinner.classList.remove('hidden');
+            resultArea.classList.add('hidden');
+            messageBox.classList.add('hidden');
+            resetButton.classList.add('hidden'); // Hide reset button during prediction
+
+            const payload = {
+                image: base64Image
+            };
+
+            // Network retry logic (Existing Logic)
+            let delay = 1000;
+            const maxRetries = 5;
+            let attempt = 0;
+            let success = false;
+            let result = null;
+
+            while (attempt < maxRetries && !success) {
+                try {
+                    const response = await fetch('/predict', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        result = await response.json();
+                        success = true;
+                    } else {
+                        const errorData = await response.json();
+                        showMessage(`Prediction failed (Status: ${response.status}): ${errorData.error || 'Unknown error'}`, 'error');
+                        break;
+                    }
+                } catch (error) {
+                    if (attempt < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2;
+                    } else {
+                        showMessage(`Network error: Could not reach the server after ${maxRetries} attempts.`, 'error');
+                    }
+                    attempt++;
+                }
+            }
+            
+            // UI State: Finished
+            predictButton.disabled = true; // Keep prediction button disabled until reset
+            buttonText.textContent = "Prediction Complete";
+            loadingSpinner.classList.add('hidden');
+            
+            if (result) {
+                displayResult(result);
+                resetButton.classList.remove('hidden'); // Show reset button on success
+            }
+        }
+
+        /**
+         * Updates the UI with the prediction results.
+         * (Existing Function)
+         */
+        function displayResult(data) {
+            document.getElementById('result-fruit').textContent = data.fruit;
+            document.getElementById('result-ripeness').textContent = data.ripeness;
+            document.getElementById('result-confidence').textContent = `${(parseFloat(data.confidence) * 100).toFixed(2)}%`;
+            
+            const ripenessElement = document.getElementById('result-ripeness');
+            let colorClass = 'text-green-900';
+            let containerClass = 'bg-green-100';
+
+            if (data.ripeness === 'Overripe') {
+                colorClass = 'text-red-800';
+                containerClass = 'bg-red-100';
+            } else if (data.ripeness === 'Unripe') {
+                colorClass = 'text-yellow-800';
+                containerClass = 'bg-yellow-100';
+            }
+            
+            ripenessElement.className = `font-bold text-xl ${colorClass}`;
+            ripenessElement.parentElement.className = `flex justify-between items-center p-3 rounded-md ${containerClass}`;
+            
+            resultArea.classList.remove('hidden');
+        }
+
+        // Initialize to File Upload mode on load
+        window.onload = () => {
+            switchInputMode('file');
+        };
+
+    </script>
+</body>
+</html>
